@@ -491,6 +491,30 @@
 
       loadStations();
 
+      // Фото загружаем при открытии balloon
+      objectManager.objects.events.add('balloonopen', async (e) => {
+        const id = e.get('objectId');
+        const station = allStations.find(s => s.id == id);
+        if (!station || !station.hasPhoto) return;
+        try {
+          const res = await fetch(`/api/stations/${id}`);
+          const data = await res.json();
+          if (data.photoBase64) {
+            // Обновляем balloonContent через ObjectManager
+            const feature = objectManager.objects.getById(id);
+            if (feature) {
+              const newContent = createBalloonContentWithPhoto(station, data.photoBase64);
+              objectManager.objects.balloon.setData({ balloonContent: newContent });
+            }
+          }
+        } catch(err) { console.error('Ошибка загрузки фото:', err); }
+      });
+
+      // Клик по маркеру — подсвечиваем карточку
+      objectManager.objects.events.add('click', (e) => {
+        highlightStation(e.get('objectId'));
+      });
+
       document.querySelectorAll('.fuel-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           document.querySelectorAll('.fuel-btn').forEach(b => b.classList.remove('active'));
@@ -679,30 +703,32 @@
         filteredStations.sort((a, b) => a.prices[activeFuel] - b.prices[activeFuel]);
       }
 
-      filteredStations.forEach((station) => {
-        const color = getMarkerColor(station);
-        
-        const placemark = new ymaps.Placemark(
-          [station.lat, station.lng],
-          {
-            balloonContent: createBalloonContent(station),
-            hintContent: `${station.name}`
-          },
-          {
-            preset: 'islands#circleIcon',
-            iconColor: color
-          }
-        );
-        
-        placemark.id = station.id;
-        placemark.events.add('click', () => highlightStation(station.id));
-        objectManager.add(placemark);
+      // ObjectManager принимает GeoJSON FeatureCollection
+      const features = filteredStations.map((station) => ({
+        type: 'Feature',
+        id: station.id,
+        geometry: {
+          type: 'Point',
+          coordinates: [station.lat, station.lng]
+        },
+        properties: {
+          balloonContent: createBalloonContent(station),
+          hintContent: station.name
+        },
+        options: {
+          preset: 'islands#circleIcon',
+          iconColor: getMarkerColor(station)
+        }
+      }));
 
+      objectManager.add({ type: 'FeatureCollection', features });
+
+      filteredStations.forEach((station) => {
         const card = createStationCard(station);
         listContainer.appendChild(card);
       });
 
-      document.getElementById('stationsCount').textContent = 
+      document.getElementById('stationsCount').textContent =
         `Загружено: ${filteredStations.length} заправок`;
 
       if (filteredStations.length > 0) {
@@ -755,23 +781,8 @@
     function createBalloonContent(station) {
       const fuelTypes = Object.keys(station.prices).filter(f => station.prices[f]);
       const photoHtml = station.hasPhoto
-        ? `<img id="balloon-photo-${station.id}" src="" style="width:100%;border-radius:8px;margin-bottom:10px;display:none;" />`
+        ? `<div style="color:#999;font-size:12px;margin-bottom:8px">📷 Загрузка фото...</div>`
         : '';
-
-      // Load photo lazily
-      if (station.hasPhoto) {
-        setTimeout(async () => {
-          try {
-            const res = await fetch(`/api/stations/${station.id}`);
-            const data = await res.json();
-            const img = document.getElementById(`balloon-photo-${station.id}`);
-            if (img && data.photoBase64) {
-              img.src = data.photoBase64;
-              img.style.display = 'block';
-            }
-          } catch(e) {}
-        }, 300);
-      }
 
       return `
         <div style="padding: 10px; max-width: 260px;">
@@ -789,7 +800,31 @@
             </div>
           ` : '<div style="color: #999; font-size: 12px;">💡 Добавьте цены</div>'}
           <div style="margin-top: 10px; font-size: 11px; color: #999; text-align: right;">
-            ${station.hasPhoto ? '📷 ' : ''}${formatTime(station.updatedAt)}
+            ${formatTime(station.updatedAt)}
+          </div>
+        </div>
+      `;
+    }
+
+    function createBalloonContentWithPhoto(station, photoBase64) {
+      const fuelTypes = Object.keys(station.prices).filter(f => station.prices[f]);
+      return `
+        <div style="padding: 10px; max-width: 260px;">
+          <img src="${photoBase64}" style="width:100%;border-radius:8px;margin-bottom:10px;" />
+          <h3 style="margin: 0 0 10px 0; color: #333;">${station.name}</h3>
+          <div style="font-size: 13px; color: #666; margin-bottom: 10px;">📍 ${station.address}</div>
+          ${fuelTypes.length > 0 ? `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              ${fuelTypes.map(fuel => `
+                <div style="background: #f8f9fa; padding: 6px; border-radius: 6px; font-size: 13px;">
+                  <div style="color: #666;">${getFuelName(fuel)}</div>
+                  <div style="font-weight: 600; color: #333;">${station.prices[fuel].toFixed(2)} ₽</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+          <div style="margin-top: 10px; font-size: 11px; color: #999; text-align: right;">
+            📷 ${formatTime(station.updatedAt)}
           </div>
         </div>
       `;
@@ -802,13 +837,8 @@
         card.classList.add('active');
         card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
-
       myMap.setCenter([station.lat, station.lng], 15, { duration: 500 });
-
-      const placemark = objectManager.getById(station.id);
-      if (placemark) {
-        placemark.balloon.open();
-      }
+      objectManager.objects.balloon.open(station.id);
     }
 
     function highlightStation(id) {
