@@ -1,0 +1,22 @@
+{
+  "name": "zapravki",
+  "version": "1.0.0",
+  "description": "Карта заправок — найди дешевый бензин рядом",
+  "main": "server.js",
+  "scripts": {
+    "start": "npx prisma migrate deploy && node server.js",
+    "dev": "node server.js",
+    "prisma:migrate": "npx prisma migrate dev",
+    "prisma:generate": "npx prisma generate"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "express": "^5.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "prisma": "^6.9.0"
+  }
+}

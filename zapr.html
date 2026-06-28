@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Карта заправок</title>
+  
+  <script src="https://api-maps.yandex.ru/2.1/?apikey=8cc52b1c-19dc-446f-9ccb-f85fc6d55895&lang=ru_RU"></script>
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    .sidebar {
+      width: 350px;
+      background: #fff;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+      z-index: 1000;
+    }
+    
+    .sidebar-header {
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .sidebar-header h1 { font-size: 24px; margin-bottom: 5px; }
+    .sidebar-header p { font-size: 14px; opacity: 0.9; }
+    
+    .action-buttons {
+      padding: 15px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .action-btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    
+    .add-btn { background: #00CC00; color: white; }
+    .add-btn:hover { background: #00aa00; }
+    .add-btn.active { background: #ff4444; animation: pulse 1.5s infinite; }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    .filters {
+      padding: 15px;
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .filter-title {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    
+    .fuel-types { display: flex; gap: 8px; flex-wrap: wrap; }
+    
+    .fuel-btn {
+      padding: 8px 16px;
+      border: 2px solid #ddd;
+      background: white;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+      font-weight: 500;
+    }
+    
+    .fuel-btn:hover { border-color: #667eea; }
+    .fuel-btn.active { background: #667eea; color: white; border-color: #667eea; }
+    
+    .stations-list { flex: 1; overflow-y: auto; padding: 10px; }
+    
+    .station-card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .station-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transform: translateY(-2px);
+    }
+    
+    .station-card.active {
+      border: 2px solid #667eea;
+      background: #f8f9ff;
+    }
+    
+    .station-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+    
+    .station-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 4px;
+    }
+    
+    .station-address { font-size: 13px; color: #666; }
+    
+    .station-badge {
+      background: #00CC00;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .station-badge.expensive { background: #ff4444; }
+    .station-badge.medium { background: #ffaa00; }
+    
+    .prices-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    
+    .price-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 8px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    
+    .price-label { color: #666; }
+    .price-value { font-weight: 600; color: #333; }
+    .price-value.cheap { color: #00CC00; }
+    
+    .updated-at {
+      font-size: 11px;
+      color: #999;
+      margin-top: 8px;
+      text-align: right;
+    }
+    
+    #map { flex: 1; height: 100%; position: relative; }
+    
+    .geo-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 50px;
+      height: 50px;
+      background: #007AFF;
+      border-radius: 50%;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 1000;
+    }
+    
+    .geo-btn:hover { background: #0056b3; }
+    
+    .stations-count {
+      padding: 10px 15px;
+      background: #f5f5f5;
+      border-top: 1px solid #e0e0e0;
+      font-size: 14px;
+      color: #666;
+      text-align: center;
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .modal.active { display: flex; }
+    
+    .modal-content {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      width: 90%;
+      max-width: 400px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .modal-header h2 { font-size: 20px; color: #333; }
+    
+    .close-modal {
+      background: none;
+      border: none;
+      font-size: 28px;
+      cursor: pointer;
+      color: #999;
+      line-height: 1;
+    }
+    
+    .close-modal:hover { color: #333; }
+    
+    .form-group { margin-bottom: 16px; }
+    
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 6px;
+    }
+    
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .prices-form {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    
+    .price-input-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    
+    .price-input-group label {
+      min-width: 70px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    
+    .price-input-group input {
+      flex: 1;
+      padding: 8px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    
+    .photo-upload {
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .photo-upload:hover { border-color: #667eea; background: #f0f4ff; }
+    .photo-upload input[type="file"] { display: none; }
+    .photo-upload-icon { font-size: 48px; margin-bottom: 8px; }
+    .photo-upload-text { font-size: 14px; color: #666; }
+    
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    
+    .submit-btn:hover { transform: translateY(-2px); }
+    .submit-btn:active { transform: translateY(0); }
+    
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        position: absolute;
+        height: 40%;
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+      }
+      body { flex-direction: column; }
+      #map { height: 60%; }
+      .modal-content { width: 95%; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1> Карта заправок</h1>
+      <p>Найди дешевый бензин рядом</p>
+    </div>
+    
+    <div class="action-buttons">
+      <button id="addStationBtn" class="action-btn add-btn" onclick="toggleAddMode()">
+        ➕ Добавить заправку
+      </button>
+    </div>
+    
+    <div class="filters">
+      <div class="filter-title">Тип топлива</div>
+      <div class="fuel-types">
+        <button class="fuel-btn active" data-fuel="all">Все</button>
+        <button class="fuel-btn" data-fuel="AI-92">АИ-92</button>
+        <button class="fuel-btn" data-fuel="AI-95">АИ-95</button>
+        <button class="fuel-btn" data-fuel="AI-98">АИ-98</button>
+        <button class="fuel-btn" data-fuel="DT">ДТ</button>
+      </div>
+    </div>
+    
+    <div class="stations-list" id="stationsList"></div>
+    
+    <div class="stations-count" id="stationsCount">
+      Загружено: 0 заправок
+    </div>
+  </div>
+  
+  <div id="map"></div>
+  <button class="geo-btn" onclick="locateUser()" title="Моё местоположение">📍</button>
+
+  <div id="addStationModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>📍 Добавить заправку</h2>
+        <button class="close-modal" onclick="closeModal()">&times;</button>
+      </div>
+      
+      <form id="addStationForm" onsubmit="submitStation(event)">
+        <div class="form-group">
+          <label>Название заправки *</label>
+          <input type="text" id="stationName" placeholder="Например: Лукойл" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Адрес</label>
+          <input type="text" id="stationAddress" placeholder="Адрес определился автоматически">
+        </div>
+        
+        <input type="hidden" id="stationLat">
+        <input type="hidden" id="stationLng">
+        
+        <div class="form-group">
+          <label>Цены на топливо</label>
+          <div class="prices-form">
+            <div class="price-input-group">
+              <label>АИ-92:</label>
+              <input type="number" id="price92" step="0.01" placeholder="0.00">
+            </div>
+            <div class="price-input-group">
+              <label>АИ-95:</label>
+              <input type="number" id="price95" step="0.01" placeholder="0.00">
+            </div>
+            <div class="price-input-group">
+              <label>АИ-98:</label>
+              <input type="number" id="price98" step="0.01" placeholder="0.00">
+            </div>
+            <div class="price-input-group">
+              <label>ДТ:</label>
+              <input type="number" id="priceDt" step="0.01" placeholder="0.00">
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Фото табло с ценами (рекомендуется)</label>
+          <label class="photo-upload" for="stationPhoto">
+            <input type="file" id="stationPhoto" accept="image/*" capture="environment" onchange="handlePhotoUpload(this)">
+            <div class="photo-upload-icon">📷</div>
+            <div class="photo-upload-text" id="photoText">Нажмите, чтобы сделать фото</div>
+          </label>
+        </div>
+        
+        <button type="submit" class="submit-btn">
+          💾 Сохранить заправку
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let myMap;
+    let objectManager;
+    let allStations = [];
+    let activeFuel = 'all';
+    let isAddingMode = false;
+    let tempPlacemark = null;
+    let uploadedPhoto = null;
+
+    const testStations = [
+      {
+        id: 1, name: 'Лукойл', brand: 'Лукойл',
+        address: 'ул. Тверская, 15',
+        lat: 55.760313, lng: 37.608674,
+        prices: { 'AI-92': 52.50, 'AI-95': 57.00, 'AI-98': 65.00, 'DT': 59.50 },
+        updatedAt: new Date(), hasPhoto: true
+      },
+      {
+        id: 2, name: 'Газпромнефть', brand: 'Газпромнефть',
+        address: 'проспект Мира, 102',
+        lat: 55.789456, lng: 37.625123,
+        prices: { 'AI-92': 51.90, 'AI-95': 56.50, 'AI-98': 64.50, 'DT': 58.90 },
+        updatedAt: new Date(), hasPhoto: true
+      },
+      {
+        id: 3, name: 'Роснефть', brand: 'Роснефть',
+        address: 'Ленинский проспект, 45',
+        lat: 55.705234, lng: 37.598765,
+        prices: { 'AI-92': 53.00, 'AI-95': 57.50, 'AI-98': 66.00, 'DT': 60.00 },
+        updatedAt: new Date(), hasPhoto: false
+      }
+    ];
+
+    ymaps.ready(init);
+
+    function init() {
+      myMap = new ymaps.Map('map', {
+        center: [55.751574, 37.573856],
+        zoom: 11,
+        controls: ['zoomControl', 'fullscreenControl', 'geolocationControl']
+      });
+
+      objectManager = new ymaps.ObjectManager({
+        clusterize: true,
+        clusterDisableByZoom: true
+      });
+      myMap.geoObjects.add(objectManager);
+
+      allStations = testStations;
+      renderStations();
+
+      document.querySelectorAll('.fuel-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.fuel-btn').forEach(b => b.classList.remove('active'));
+          e.target.classList.add('active');
+          activeFuel = e.target.dataset.fuel;
+          renderStations();
+        });
+      });
+
+      myMap.events.add('click', handleMapClick);
+    }
+
+    function toggleAddMode() {
+      isAddingMode = !isAddingMode;
+      const btn = document.getElementById('addStationBtn');
+      
+      if (isAddingMode) {
+        btn.textContent = '❌ Отмена';
+        btn.classList.add('active');
+        myMap.cursors.push('crosshair');
+        alert('📍 Кликните на карту, где находится заправка');
+      } else {
+        btn.textContent = '➕ Добавить заправку';
+        btn.classList.remove('active');
+        myMap.cursors.pop();
+        if (tempPlacemark) {
+          myMap.geoObjects.remove(tempPlacemark);
+          tempPlacemark = null;
+        }
+      }
+    }
+
+    async function handleMapClick(e) {
+      if (!isAddingMode) return;
+
+      const coords = e.get('coords');
+      
+      if (tempPlacemark) myMap.geoObjects.remove(tempPlacemark);
+      tempPlacemark = new ymaps.Placemark(coords, {
+        hintContent: 'Новая заправка'
+      }, { preset: 'islands#redDotIcon' });
+      myMap.geoObjects.add(tempPlacemark);
+
+      try {
+        const address = await getAddressByCoords(coords);
+        openAddStationModal(coords, address);
+      } catch (error) {
+        console.error('Ошибка геокодинга:', error);
+        openAddStationModal(coords, 'Адрес не определен');
+      }
+      
+      toggleAddMode();
+    }
+
+    async function getAddressByCoords(coords) {
+      const res = await ymaps.geocode(coords);
+      const firstGeoObject = res.geoObjects.get(0);
+      return firstGeoObject.getAddressLine();
+    }
+
+    function openAddStationModal(coords, address) {
+      document.getElementById('stationLat').value = coords[0];
+      document.getElementById('stationLng').value = coords[1];
+      document.getElementById('stationAddress').value = address;
+      document.getElementById('addStationModal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('addStationModal').classList.remove('active');
+      document.getElementById('addStationForm').reset();
+      uploadedPhoto = null;
+      document.getElementById('photoText').textContent = 'Нажмите, чтобы сделать фото';
+      if (tempPlacemark) {
+        myMap.geoObjects.remove(tempPlacemark);
+        tempPlacemark = null;
+      }
+    }
+
+    function handlePhotoUpload(input) {
+      if (input.files && input.files[0]) {
+        uploadedPhoto = input.files[0];
+        document.getElementById('photoText').textContent = `📷 ${input.files[0].name}`;
+      }
+    }
+
+    function submitStation(event) {
+      event.preventDefault();
+      
+      const stationData = {
+        id: Date.now(),
+        name: document.getElementById('stationName').value,
+        address: document.getElementById('stationAddress').value,
+        lat: parseFloat(document.getElementById('stationLat').value),
+        lng: parseFloat(document.getElementById('stationLng').value),
+        prices: {
+          'AI-92': parseFloat(document.getElementById('price92').value) || null,
+          'AI-95': parseFloat(document.getElementById('price95').value) || null,
+          'AI-98': parseFloat(document.getElementById('price98').value) || null,
+          'DT': parseFloat(document.getElementById('priceDt').value) || null
+        },
+        hasPhoto: uploadedPhoto !== null,
+        updatedAt: new Date()
+      };
+
+      const hasPrices = Object.values(stationData.prices).some(p => p !== null);
+      if (!hasPrices) {
+        alert('⚠️ Введите хотя бы одну цену на топливо');
+        return;
+      }
+
+      allStations.push(stationData);
+      renderStations();
+      closeModal();
+    }
+
+    function getAveragePrice(fuelType) {
+      const prices = allStations
+        .map(s => s.prices[fuelType])
+        .filter(p => p !== null && p !== undefined);
+      
+      if (prices.length === 0) return null;
+      return prices.reduce((a, b) => a + b, 0) / prices.length;
+    }
+
+    function getMarkerColor(station) {
+      if (activeFuel !== 'all' && station.prices[activeFuel]) {
+        const avg = getAveragePrice(activeFuel);
+        if (!avg) return '#00CC00';
+        
+        const price = station.prices[activeFuel];
+        if (price < avg * 0.95) return '#00CC00';
+        if (price > avg * 1.05) return '#ff4444';
+        return '#ffaa00';
+      }
+      return '#00CC00';
+    }
+
+    function getBadgeInfo(station) {
+      if (activeFuel === 'all') return { class: '', text: '' };
+      
+      const price = station.prices[activeFuel];
+      if (!price) return { class: '', text: '' };
+      
+      const avg = getAveragePrice(activeFuel);
+      if (!avg) return { class: '', text: '' };
+      
+      if (price < avg * 0.95) return { class: 'cheap', text: 'Выгодно!' };
+      if (price > avg * 1.05) return { class: 'expensive', text: 'Дорого' };
+      return { class: 'medium', text: 'Средняя цена' };
+    }
+
+    function renderStations() {
+      objectManager.removeAll();
+      const listContainer = document.getElementById('stationsList');
+      listContainer.innerHTML = '';
+
+      let filteredStations = allStations;
+      if (activeFuel !== 'all') {
+        filteredStations = allStations.filter(s => s.prices[activeFuel]);
+        filteredStations.sort((a, b) => a.prices[activeFuel] - b.prices[activeFuel]);
+      }
+
+      filteredStations.forEach((station) => {
+        const color = getMarkerColor(station);
+        
+        const placemark = new ymaps.Placemark(
+          [station.lat, station.lng],
+          {
+            balloonContent: createBalloonContent(station),
+            hintContent: `${station.name}`
+          },
+          {
+            preset: 'islands#circleIcon',
+            iconColor: color
+          }
+        );
+        
+        placemark.id = station.id;
+        placemark.events.add('click', () => highlightStation(station.id));
+        objectManager.add(placemark);
+
+        const card = createStationCard(station);
+        listContainer.appendChild(card);
+      });
+
+      document.getElementById('stationsCount').textContent = 
+        `Загружено: ${filteredStations.length} заправок`;
+
+      if (filteredStations.length > 0) {
+        myMap.setCenter([filteredStations[0].lat, filteredStations[0].lng], 13);
+      }
+    }
+
+    function createStationCard(station) {
+      const card = document.createElement('div');
+      card.className = 'station-card';
+      card.dataset.id = station.id;
+      card.onclick = () => focusOnStation(station);
+
+      const fuelTypes = Object.keys(station.prices).filter(f => station.prices[f]);
+      const mainFuel = activeFuel !== 'all' ? activeFuel : 'AI-95';
+      const mainPrice = station.prices[mainFuel];
+      
+      const badge = getBadgeInfo(station);
+
+      card.innerHTML = `
+        <div class="station-header">
+          <div>
+            <div class="station-name">${station.name}</div>
+            <div class="station-address">📍 ${station.address}</div>
+          </div>
+          ${badge.text ? `<div class="station-badge ${badge.class}">${badge.text}</div>` : ''}
+        </div>
+        ${fuelTypes.length > 0 ? `
+          <div class="prices-grid">
+            ${fuelTypes.map(fuel => {
+              const price = station.prices[fuel];
+              const isCheap = activeFuel === fuel && badge.class === 'cheap';
+              return `
+                <div class="price-item">
+                  <span class="price-label">${getFuelName(fuel)}</span>
+                  <span class="price-value ${isCheap ? 'cheap' : ''}">${price.toFixed(2)} ₽</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : '<div style="color: #999; font-size: 13px; margin-top: 10px;"> Добавьте цены</div>'}
+        <div class="updated-at">
+          ${station.hasPhoto ? '📷 ' : ''}Добавлено: ${formatTime(station.updatedAt)}
+        </div>
+      `;
+
+      return card;
+    }
+
+    function createBalloonContent(station) {
+      const fuelTypes = Object.keys(station.prices).filter(f => station.prices[f]);
+      
+      return `
+        <div style="padding: 10px; max-width: 250px;">
+          <h3 style="margin: 0 0 10px 0; color: #333;">${station.name}</h3>
+          <div style="font-size: 13px; color: #666; margin-bottom: 10px;">📍 ${station.address}</div>
+          ${fuelTypes.length > 0 ? `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              ${fuelTypes.map(fuel => `
+                <div style="background: #f8f9fa; padding: 6px; border-radius: 6px; font-size: 13px;">
+                  <div style="color: #666;">${getFuelName(fuel)}</div>
+                  <div style="font-weight: 600; color: #333;">${station.prices[fuel].toFixed(2)} ₽</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<div style="color: #999; font-size: 12px;">💡 Добавьте цены</div>'}
+          <div style="margin-top: 10px; font-size: 11px; color: #999; text-align: right;">
+            ${station.hasPhoto ? '📷 ' : ''}${formatTime(station.updatedAt)}
+          </div>
+        </div>
+      `;
+    }
+
+    function focusOnStation(station) {
+      document.querySelectorAll('.station-card').forEach(c => c.classList.remove('active'));
+      const card = document.querySelector(`.station-card[data-id="${station.id}"]`);
+      if (card) {
+        card.classList.add('active');
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      myMap.setCenter([station.lat, station.lng], 15, { duration: 500 });
+
+      const placemark = objectManager.getById(station.id);
+      if (placemark) {
+        placemark.balloon.open();
+      }
+    }
+
+    function highlightStation(id) {
+      document.querySelectorAll('.station-card').forEach(c => c.classList.remove('active'));
+      const card = document.querySelector(`.station-card[data-id="${id}"]`);
+      if (card) {
+        card.classList.add('active');
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function getUserLocation() {
+      if (ymaps.geolocation) {
+        myMap.geoObjects.add(ymaps.geolocation);
+        myMap.setCenter(
+          [ymaps.geolocation.latitude, ymaps.geolocation.longitude], 
+          14
+        );
+      }
+    }
+
+    function locateUser() {
+      getUserLocation();
+    }
+
+    function getFuelName(code) {
+      const names = {
+        'AI-92': 'АИ-92',
+        'AI-95': 'АИ-95',
+        'AI-98': 'АИ-98',
+        'DT': 'ДТ'
+      };
+      return names[code] || code;
+    }
+
+    function formatTime(date) {
+      const now = new Date();
+      const diff = Math.floor((now - date) / 1000);
+      
+      if (diff < 60) return 'только что';
+      if (diff < 3600) return `${Math.floor(diff / 60)} мин. назад`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)} ч. назад`;
+      return date.toLocaleDateString('ru-RU');
+    }
+
+    document.getElementById('addStationModal').addEventListener('click', (e) => {
+      if (e.target.id === 'addStationModal') {
+        closeModal();
+      }
+    });
+  </script>
+</body>
+</html>
