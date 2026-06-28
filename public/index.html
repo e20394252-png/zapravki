@@ -340,23 +340,60 @@
     .submit-btn:active { transform: translateY(0); }
     
     @media (max-width: 768px) {
-      .sidebar {
-        width: 100%;
-        position: absolute;
-        height: 40%;
-        border-right: none;
-        border-bottom: 1px solid #e0e0e0;
-      }
       body { flex-direction: column; }
-      #map { height: 60%; }
-      .modal-content { width: 95%; padding: 16px; }
+
+      .sidebar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: 55vh;
+        border-right: none;
+        border-top: 1px solid #e0e0e0;
+        border-radius: 16px 16px 0 0;
+        transform: translateY(calc(100% - 52px));
+        transition: transform 0.35s cubic-bezier(.4,0,.2,1);
+        z-index: 1001;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+      }
+
+      .sidebar.open { transform: translateY(0); }
+
+      #map {
+        width: 100%;
+        flex: 1;
+        height: 100vh;
+      }
+
+      .sidebar-header {
+        padding: 10px 20px;
+        cursor: pointer;
+        user-select: none;
+        border-radius: 16px 16px 0 0;
+      }
+
+      .sidebar-handle {
+        width: 40px;
+        height: 4px;
+        background: rgba(255,255,255,0.5);
+        border-radius: 2px;
+        margin: 0 auto 6px;
+      }
+
+      .sidebar-header h1 { font-size: 18px; }
+
+      .modal-content { width: 95%; padding: 16px; max-height: 85vh; }
+
+      .geo-btn { bottom: calc(55vh + 10px); }
     }
   </style>
 </head>
 <body>
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <h1> Карта заправок</h1>
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header" onclick="toggleSidebar()">
+      <div class="sidebar-handle" id="sidebarHandle"></div>
+      <h1>⛽ Карта заправок</h1>
       <p>Найди дешевый бензин рядом</p>
     </div>
     
@@ -454,6 +491,7 @@
     let isAddingMode = false;
     let tempPlacemark = null;
     let uploadedPhoto = null;
+    let userLocationPlacemark = null;
 
     // Данные загружаются из API
 
@@ -506,29 +544,13 @@
 
       loadStations();
 
-      // Фото загружаем при открытии balloon
-      objectManager.objects.events.add('balloonopen', async (e) => {
-        const id = e.get('objectId');
-        const station = allStations.find(s => s.id == id);
-        if (!station || !station.hasPhoto) return;
-        try {
-          const res = await fetch(`/api/stations/${id}`);
-          const data = await res.json();
-          if (data.photoBase64) {
-            // Обновляем balloonContent через ObjectManager
-            const feature = objectManager.objects.getById(id);
-            if (feature) {
-              const newContent = createBalloonContentWithPhoto(station, data.photoBase64);
-              objectManager.objects.balloon.setData({ balloonContent: newContent });
-            }
-          }
-        } catch(err) { console.error('Ошибка загрузки фото:', err); }
-      });
-
-      // Клик по маркеру — подсвечиваем карточку
+      // Клик по маркеру — подсвечиваем карточку в сайдбаре
       objectManager.objects.events.add('click', (e) => {
         highlightStation(e.get('objectId'));
       });
+
+      // Автоматическая геолокация при загрузке
+      locateUser(false);
 
       document.querySelectorAll('.fuel-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -893,18 +915,26 @@
       }
     }
 
-    function getUserLocation() {
-      if (ymaps.geolocation) {
-        myMap.geoObjects.add(ymaps.geolocation);
-        myMap.setCenter(
-          [ymaps.geolocation.latitude, ymaps.geolocation.longitude], 
-          14
-        );
+    function locateUser(showAlert = true) {
+      if (!navigator.geolocation) {
+        if (showAlert) alert('Геолокация не поддерживается браузером');
+        return;
       }
-    }
-
-    function locateUser() {
-      getUserLocation();
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          myMap.setCenter([latitude, longitude], 14, { duration: 500 });
+          if (userLocationPlacemark) myMap.geoObjects.remove(userLocationPlacemark);
+          userLocationPlacemark = new ymaps.Placemark(
+            [latitude, longitude],
+            { balloonContent: 'Вы здесь 📍', hintContent: 'Ваше местоположение' },
+            { preset: 'islands#bluePersonCircleIcon' }
+          );
+          myMap.geoObjects.add(userLocationPlacemark);
+        },
+        () => { if (showAlert) alert('Не удалось определить местоположение'); },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
     }
 
     function getFuelName(code) {
@@ -927,7 +957,14 @@
       return date.toLocaleDateString('ru-RU');
     }
 
+    function toggleSidebar() {
+      if (window.innerWidth > 768) return;
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.toggle('open');
+    }
+
     document.getElementById('addStationModal').addEventListener('click', (e) => {
+
       if (e.target.id === 'addStationModal') {
         closeModal();
       }
